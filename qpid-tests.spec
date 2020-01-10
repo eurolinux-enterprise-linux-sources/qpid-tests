@@ -2,7 +2,7 @@
 %{!?python_version: %global python_version %(%{__python} -c "from distutils.sysconfig import get_python_version; print get_python_version()")}
 
 Name:           qpid-tests
-Version:        0.12
+Version:        0.14
 Release:        1%{?dist}
 Summary:        Conformance tests for Apache Qpid
 
@@ -10,14 +10,14 @@ Group:          Development/Python
 License:        ASL 2.0
 URL:            http://qpid.apache.org
 Source0:        %{name}-%{version}.tar.gz
-# svn export -r 1154981 https://svn.apache.org/repos/asf/qpid/branches/0.12/qpid/tests qpid-tests-0.12
-# tar -czf qpid-tests-0.12.tar.gz qpid-tests-0.12
+# svn export -r 1209041 http://svn.apache.org/repos/asf/qpid/branches/0.14/qpid/tests qpid-tests-0.14
+# tar -cvzf qpid-tests-0.14.tar.gz qpid-tests-0.14
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildArch:      noarch
 
 BuildRequires:  python-devel
 
-Requires:       python-qpid >= 0.12
+Requires:       python-qpid >= 0.9
 Requires:       python-qmf
 
 %description
@@ -30,11 +30,11 @@ Conformance tests for Apache Qpid.
 CFLAGS="$RPM_OPT_FLAGS" %{__python} setup.py build
 
 %install
-rm -rf $RPM_BUILD_ROOT
-%{__python} setup.py install --skip-build --root $RPM_BUILD_ROOT
+rm -rf %{buildroot}
+%{__python} setup.py install --skip-build --root %{buildroot}
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root,-)
@@ -46,7 +46,10 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
-* Mon Aug  8 2011 Justin Ross <jross@redhat.com> - 0.12-1
+* Fri Dec 9 2011 Justin Ross <jross@redhat.com> - 0.14-1
+- Rebase to Qpid 0.14
+
+* Mon Aug 08 2011 Justin Ross <jross@redhat.com> - 0.12-1
 - Rebased to Qpid 0.12.
 - Resolves: bz706991
 
