@@ -115,7 +115,6 @@ class QueueTests(TestBase010):
         except SessionException, e:
             self.assertEquals(405, e.args[0].error_code)
 
-
     def test_declare_passive(self):
         """
         Test that the passive field is honoured in queue.declare
@@ -134,7 +133,7 @@ class QueueTests(TestBase010):
 
     def test_bind(self):
         """
-        Test various permutations of the queue.bind method
+        Test various permutations of the queue.bind method+
         """
         session = self.session
         session.queue_declare(queue="queue-1", exclusive=True, auto_delete=True)

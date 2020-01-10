@@ -23,6 +23,7 @@ from qpid.management import managementChannel, managementClient
 from threading import Condition
 from time import sleep
 import qmf.console
+import qpid.messaging
 
 class ManagementTest (TestBase010):
     """
@@ -241,6 +242,38 @@ class ManagementTest (TestBase010):
         pq = self.qmf.getObjects(_class="queue", name="purge-queue")[0]
         self.assertEqual (pq.msgDepth,0)
 
+    def test_reroute_priority_queue(self):
+        self.startQmf()
+        session = self.session
+
+        #setup test queue supporting multiple priority levels
+        session.queue_declare(queue="test-queue", exclusive=True, auto_delete=True, arguments={'x-qpid-priorities':10})
+
+        #send some messages of varying priority to that queue:
+        for i in range(0, 5):
+            deliveryProps = session.delivery_properties(routing_key="test-queue", priority=i+5)
+            session.message_transfer(message=Message(deliveryProps, "Message %d" % (i+1)))
+
+
+        #declare and bind a queue to amq.fanout through which rerouted
+        #messages can be verified:
+        session.queue_declare(queue="rerouted", exclusive=True, auto_delete=True, arguments={'x-qpid-priorities':10})
+        session.exchange_bind(queue="rerouted", exchange="amq.fanout")
+
+        #reroute messages from test queue to amq.fanout (and hence to
+        #rerouted queue):
+        pq = self.qmf.getObjects(_class="queue", name="test-queue")[0]
+        result = pq.reroute(0, False, "amq.fanout")
+        self.assertEqual(result.status, 0) 
+
+        #verify messages are all rerouted:
+        self.subscribe(destination="incoming", queue="rerouted")
+        incoming = session.incoming("incoming")
+        for i in range(0, 5):
+            msg = incoming.get(timeout=1)
+            self.assertEqual("Message %d" % (5-i), msg.body)
+
+
     def test_reroute_queue(self):
         """
         Test ability to reroute messages from the head of a queue.
@@ -308,7 +341,40 @@ class ManagementTest (TestBase010):
         self.assertEqual(result.status, 0) 
         pq.update()
         self.assertEqual(pq.msgDepth,20)
-        
+
+    def test_reroute_alternate_exchange(self):
+        """
+        Test that when rerouting, the alternate-exchange is considered if relevant
+        """
+        self.startQmf()
+        session = self.session
+        # 1. Create 2 exchanges A and B (fanout) where B is the
+        # alternate exchange for A
+        session.exchange_declare(exchange="B", type="fanout")
+        session.exchange_declare(exchange="A", type="fanout", alternate_exchange="B")
+
+        # 2. Bind queue X to B
+        session.queue_declare(queue="X", exclusive=True, auto_delete=True)
+        session.exchange_bind(queue="X", exchange="B")
+
+        # 3. Send 1 message to queue Y
+        session.queue_declare(queue="Y", exclusive=True, auto_delete=True)
+        props = session.delivery_properties(routing_key="Y")
+        session.message_transfer(message=Message(props, "reroute me!"))
+
+        # 4. Call reroute on queue Y and specify that messages should
+        # be sent to exchange A
+        y = self.qmf.getObjects(_class="queue", name="Y")[0]
+        result = y.reroute(1, False, "A")
+        self.assertEqual(result.status, 0)
+
+        # 5. verify that the message is rerouted through B (as A has
+        # no matching bindings) to X
+        self.subscribe(destination="x", queue="X")
+        self.assertEqual("reroute me!", session.incoming("x").get(timeout=1).body)
+
+        # Cleanup
+        for e in ["A", "B"]: session.exchange_delete(exchange=e)
 
     def test_methods_async (self):
         """
@@ -386,6 +452,30 @@ class ManagementTest (TestBase010):
         conn = self.connect()
         session = conn.session("my-named-session")
         session.queue_declare(queue="whatever", exclusive=True, auto_delete=True)
+
+    def test_immediate_method(self):
+        url = "%s://%s:%d" % (self.broker.scheme or "amqp", self.broker.host, self.broker.port)
+        conn = qpid.messaging.Connection(url)
+        conn.open()
+        sess = conn.session()
+        replyTo = "qmf.default.direct/reply_immediate_method_test;{node:{type:topic}}"
+        agent_sender   = sess.sender("qmf.default.direct/broker")
+        agent_receiver = sess.receiver(replyTo)
+        queue_create = sess.sender("test-queue-imm-method;{create:always,delete:always,node:{type:queue,durable:False,x-declare:{auto-delete:True}}}")
+
+        method_request = {'_method_name':'reroute','_object_id':{'_object_name':'org.apache.qpid.broker:queue:test-queue-imm-method'}}
+        method_request['_arguments'] = {'request':0, 'useAltExchange':False, 'exchange':'amq.fanout'}
+
+        reroute_call = qpid.messaging.Message(method_request)
+        reroute_call.properties['qmf.opcode'] = '_method_request'
+        reroute_call.properties['x-amqp-0-10.app-id'] = 'qmf2'
+        reroute_call.reply_to = replyTo
+
+        agent_sender.send(reroute_call)
+        result = agent_receiver.fetch(3)
+        self.assertEqual(result.properties['qmf.opcode'], '_method_response')
+
+        conn.close()
 
     def test_binding_count_on_queue(self):
         self.startQmf()
@@ -465,3 +555,33 @@ class ManagementTest (TestBase010):
         self.assertEqual(queue.bindingCount, 1,
                          "deleted bindings not accounted for (expected 1, got %d)" % queue.bindingCount)
 
+    def test_connection_stats(self):
+        """
+        Test message in/out stats for connection
+        """
+        self.startQmf()
+        conn = self.connect()
+        session = conn.session("stats-session")
+
+        #using qmf find named session and the corresponding connection:
+        conn_qmf = self.qmf.getObjects(_class="session", name="stats-session")[0]._connectionRef_
+        
+        #send a message to a queue
+        session.queue_declare(queue="stats-q", exclusive=True, auto_delete=True)
+        session.message_transfer(message=Message(session.delivery_properties(routing_key="stats-q"), "abc"))
+        
+        #check the 'msgs sent from' stat for this connection
+        conn_qmf.update()
+        self.assertEqual(conn_qmf.msgsFromClient, 1)
+
+        #receive message from queue
+        session.message_subscribe(destination="d", queue="stats-q")
+        incoming = session.incoming("d")
+        incoming.start()
+        self.assertEqual("abc", incoming.get(timeout=1).body)
+
+        #check the 'msgs sent to' stat for this connection
+        conn_qmf.update()
+        self.assertEqual(conn_qmf.msgsToClient, 1)
+
+        

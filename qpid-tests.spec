@@ -2,7 +2,7 @@
 %{!?python_version: %global python_version %(%{__python} -c "from distutils.sysconfig import get_python_version; print get_python_version()")}
 
 Name:           qpid-tests
-Version:        0.7.946106
+Version:        0.10
 Release:        1%{?dist}
 Summary:        Conformance tests for Apache Qpid
 
@@ -10,14 +10,14 @@ Group:          Development/Python
 License:        ASL 2.0
 URL:            http://qpid.apache.org
 Source0:        %{name}-%{version}.tar.gz
-# svn export -r<rev> http://svn.apache.org/repos/asf/qpid/trunk/qpid/tests qpid-tests-0.7.<rev>
-# tar czf qpid-tests-0.7.<rev>.tar.gz qpid-tests-0.7.<rev>
+# svn export -r1083082 http://svn.apache.org/repos/asf/qpid/branches/0.10/qpid/tests qpid-tests-0.10
+# tar czf qpid-tests-0.10.tar.gz qpid-tests-0.10
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildArch:      noarch
 
 BuildRequires:  python-devel
 
-Requires:       python-qpid >= 0.7
+Requires:       python-qpid >= 0.9
 Requires:       python-qmf
 
 %description
@@ -46,6 +46,15 @@ rm -rf $RPM_BUILD_ROOT
 %endif
 
 %changelog
+* Thu Mar 24 2011 Rafael Schloming <rafaels@redhat.com> - 0.10-1
+- Rebased to 1083082.
+
+* Wed Mar  9 2011 Rafael Schloming <rafaels@redhat.com> - 0.9.1078967-1
+- Rebased to 1078967.
+
+* Wed Feb 23 2011 Rafael Schloming <rafaels@redhat.com> - 0.9.1073306-1
+- Rebased to 1073306.
+
 * Wed May 19 2010 Nuno Santos <nsantos@redhat.com> - 0.7.946106-1
 - Rebased to svn rev 946106
 - Related: rhbz574881
